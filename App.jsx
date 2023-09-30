@@ -1,11 +1,4 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
-import React, {useEffect} from 'react';
+import React, {useState} from 'react';
 import {
     SafeAreaView,
     ScrollView,
@@ -13,64 +6,54 @@ import {
     StyleSheet,
     Text,
     useColorScheme,
-    View,
     TouchableOpacity,
-    TextInput,
 } from 'react-native';
 
-import {WebView} from 'react-native-webview';
 import RNFetchBlob from 'rn-fetch-blob';
-import {
-    Colors,
-    DebugInstructions,
-    Header,
-    LearnMoreLinks,
-    ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+import {Colors, Header} from 'react-native/Libraries/NewAppScreen';
 import DocumentPicker from 'react-native-document-picker';
 
 import axios from 'axios';
 
-import {
-    chunkSizeDefault,
-    chunkMaxSize,
-    statusFileOperation,
-    FieldFiles,
-    conversionRateUnitData,
-    endPoints,
-    WebviewLayout,
-} from './const';
+let fileSend = '';
+let nameFile = '';
+let typeFile = '';
 
-const dataProps = {
-    bandwidth: 1024 ** 2,
-};
+// local: 'http://localhost:1323/api/v1/files/upload-chunks-base64'
+// link: 'https://wshr.inshasaki.com/upload/api/v1/files/upload-chunks-base64'
 
 function App() {
     const isDarkMode = useColorScheme() === 'dark';
 
-    const [statusFiles, setStatusFiles] = React.useState({});
-    let [counter, setCounter] = React.useState(1);
+    const fileNumber = 'randomText' + '_fileNumber_1'; // NOTE NOTE NOTE: different fileNumber for each file
+
+    let [retryAt, setRetryAt] = useState(-1);
 
     const backgroundStyle = {
         backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
     };
 
-    const chunkSize =
-        dataProps?.bandwidth >= chunkSizeDefault &&
-        dataProps?.bandwidth <= chunkMaxSize
-            ? dataProps?.bandwidth
-            : chunkSizeDefault;
-
-    let fileSend;
-    let nameFile;
-
-    const callApiUpload = async contenFile => {
+    const callApiUpload = async (
+        contenFile,
+        fileNumber,
+        chunkNumber,
+        totalChunk,
+        typeFile,
+        retry,
+        retryIsLast,
+    ) => {
         await axios
             .post(
-                endPoints.uploadChunkBase64,
+                'https://wshr.inshasaki.com/upload/api/v1/files/upload-chunks-base64',
                 {
-                    fileSend: contenFile,
-                    nameFile,
+                    chunk: contenFile,
+                    file_name: nameFile,
+                    file_number: fileNumber,
+                    chunk_number: chunkNumber,
+                    total_chunk: totalChunk,
+                    type_file: typeFile,
+                    retry: retry,
+                    retry_is_last: retryIsLast,
                 },
                 {
                     headers: {
@@ -84,15 +67,55 @@ function App() {
             })
             .catch(err => {
                 console.log('err: ', err);
+                setRetryAt(Number(chunkNumber));
             });
     };
 
     const handleUpload = async () => {
-        const str1 = fileSend.slice(0, 5000);
-        const str2 = fileSend.slice(5000, -1);
+        const divisionFile = Math.ceil(fileSend.length / 3);
 
-        await callApiUpload(str1);
-        await callApiUpload(str2);
+        const part2 = divisionFile * 2;
+
+        const str1 = fileSend.slice(0, divisionFile);
+        const str2 = fileSend.slice(divisionFile, part2);
+        const str3 = fileSend.slice(part2, -1);
+
+        /**
+         * @param str1: content file had slice
+         * @param fileNumber: unique, file's name in the list files upload
+         * @param chunkNumber: the order chunk file upload
+         * @param totalChunk: total of chunks
+         * @param typeFile: type file (image/png)
+         * @param retry: true if call api again from previous chunk got errors
+         * @param retryIsLast: true if call api again from previous chunk got errors and it is the last chunk
+         */
+        await callApiUpload(str1, fileNumber, 1, 3, typeFile, false, false);
+
+        await callApiUpload(str2, fileNumber, 2, 3, typeFile, false, false);
+        await callApiUpload(str3, fileNumber, 3, 3, typeFile, false, false);
+    };
+
+    const handleRetryFile = async () => {
+        const divisionFile = Math.ceil(fileSend.length / 3);
+
+        const from = divisionFile * (retryAt - 1);
+        let end = divisionFile * retryAt;
+        if (retryAt === 3) {
+            end = -1;
+        }
+
+        const contenRetry = fileSend.slice(from, end);
+
+        console.log('fileNumber: ', fileNumber);
+        await callApiUpload(
+            contenRetry,
+            fileNumber,
+            retryAt,
+            3,
+            typeFile,
+            true,
+            true,
+        );
     };
 
     return (
@@ -114,17 +137,17 @@ function App() {
                         try {
                             const pickerResult = await DocumentPicker.pick({
                                 presentationStyle: 'fullScreen',
-                                // copyTo: 'cachesDirectory',
+                                copyTo: 'cachesDirectory',
                                 allowMultiSelection: true,
                             });
 
                             /*
-                            [
-                                {"fileCopyUri": "file:///Users/longle/Library/Developer/CoreSimulator/Devices/1D01E050-0EC0-4C4A-AE24-928726948793/data/Containers/Data/Application/051B0417-D539-4303-B533-9DD913C139C8/Library/Caches/916E3143-0D07-4538-BD61-72581533BA74/eduardo-bergen-a1V5iA9UTDc-unsplash.jpg", "name": "eduardo-bergen-a1V5iA9UTDc-unsplash.jpg", "size": 2552150, "type": "image/jpeg", "uri": "file:///Users/longle/Library/Developer/CoreSimulator/Devices/1D01E050-0EC0-4C4A-AE24-928726948793/data/Containers/Data/Application/051B0417-D539-4303-B533-9DD913C139C8/tmp/org.reactjs.native.example.rnHasaki-Inbox/eduardo-bergen-a1V5iA9UTDc-unsplash.jpg"}, 
-                                
-                                {"fileCopyUri": "file:///Users/longle/Library/Developer/CoreSimulator/Devices/1D01E050-0EC0-4C4A-AE24-928726948793/data/Containers/Data/Application/051B0417-D539-4303-B533-9DD913C139C8/Library/Caches/21A02E6E-98F9-4E4F-9972-AA6EF4DB5E76/joban-khangura-VdL_VPHug-k-unsplash.jpg", "name": "joban-khangura-VdL_VPHug-k-unsplash.jpg", "size": 3578321, "type": "image/jpeg", "uri": "file:///Users/longle/Library/Developer/CoreSimulator/Devices/1D01E050-0EC0-4C4A-AE24-928726948793/data/Containers/Data/Application/051B0417-D539-4303-B533-9DD913C139C8/tmp/org.reactjs.native.example.rnHasaki-Inbox/joban-khangura-VdL_VPHug-k-unsplash.jpg"}
-                            ]
-                        */
+                                [
+                                    {"fileCopyUri": "file:///Users/longle/Library/Developer/CoreSimulator/Devices/1D01E050-0EC0-4C4A-AE24-928726948793/data/Containers/Data/Application/051B0417-D539-4303-B533-9DD913C139C8/Library/Caches/916E3143-0D07-4538-BD61-72581533BA74/eduardo-bergen-a1V5iA9UTDc-unsplash.jpg", "name": "eduardo-bergen-a1V5iA9UTDc-unsplash.jpg", "size": 2552150, "type": "image/jpeg", "uri": "file:///Users/longle/Library/Developer/CoreSimulator/Devices/1D01E050-0EC0-4C4A-AE24-928726948793/data/Containers/Data/Application/051B0417-D539-4303-B533-9DD913C139C8/tmp/org.reactjs.native.example.rnHasaki-Inbox/eduardo-bergen-a1V5iA9UTDc-unsplash.jpg"}, 
+                                    
+                                    {"fileCopyUri": "file:///Users/longle/Library/Developer/CoreSimulator/Devices/1D01E050-0EC0-4C4A-AE24-928726948793/data/Containers/Data/Application/051B0417-D539-4303-B533-9DD913C139C8/Library/Caches/21A02E6E-98F9-4E4F-9972-AA6EF4DB5E76/joban-khangura-VdL_VPHug-k-unsplash.jpg", "name": "joban-khangura-VdL_VPHug-k-unsplash.jpg", "size": 3578321, "type": "image/jpeg", "uri": "file:///Users/longle/Library/Developer/CoreSimulator/Devices/1D01E050-0EC0-4C4A-AE24-928726948793/data/Containers/Data/Application/051B0417-D539-4303-B533-9DD913C139C8/tmp/org.reactjs.native.example.rnHasaki-Inbox/joban-khangura-VdL_VPHug-k-unsplash.jpg"}
+                                ]
+                            */
                             // console.log('pickerResult: ', pickerResult)
                             const filePath = pickerResult[0].uri.replace(
                                 'file:',
@@ -133,9 +156,9 @@ function App() {
                             const getType = pickerResult[0].type;
                             const getName = pickerResult[0].name;
 
+                            fileSend = '';
+                            typeFile = getType;
                             nameFile = getName;
-
-                            fileSend = `data:${getType};base64,`;
                             await RNFetchBlob.fs
                                 .readFile(filePath, 'base64')
                                 .then(data => {
@@ -160,6 +183,15 @@ function App() {
                     onPress={handleUpload}>
                     <Text style={styles.buttonTextStyle}>Upload Files</Text>
                 </TouchableOpacity>
+
+                {retryAt >= 0 && (
+                    <TouchableOpacity
+                        style={styles.buttonStyle}
+                        activeOpacity={0.5}
+                        onPress={handleRetryFile}>
+                        <Text style={styles.buttonTextStyle}>Retry Files</Text>
+                    </TouchableOpacity>
+                )}
             </ScrollView>
         </SafeAreaView>
     );
